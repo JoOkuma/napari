@@ -2,8 +2,6 @@ from typing import Set, TypeVar
 
 import numpy as np
 
-from napari.layers.points._points_utils import _points_in_box_3d, points_in_box
-
 
 def select(layer, event):
     """Select points.
@@ -95,8 +93,8 @@ def select(layer, event):
         # using the drag box
         layer._is_selecting = False
         n_display = len(event.dims_displayed)
-        _select_points_from_drag(
-            layer=layer, modify_selection=modify_selection, n_display=n_display
+        layer.selected_data = layer._select_points_from_drag(
+            modify_selection=modify_selection, n_display=n_display
         )
 
     # reset the selection box data and highlights
@@ -199,45 +197,3 @@ def _update_drag_vectors_from_event(layer, event):
         # if in 2D, set the drag normal and up to None
         layer._drag_normal = None
         layer._drag_up = None
-
-
-def _select_points_from_drag(layer, modify_selection: bool, n_display: int):
-    """Select points on a Points layer after a drag event.
-
-    Parameters
-    ----------
-    layer : napari.layers.Points
-        The points layer to select points on.
-    modify_selection : bool
-        Set to true if the selection should modify the current selected data
-        in layer.selected_data.
-    n_display : int
-        The number of dimensions current being displayed
-    """
-    if len(layer._view_data) == 0:
-        # if no data in view, there isn't any data to select
-        layer.selected_data = set()
-
-    # if there is data in view, find the points in the drag box
-    if n_display == 2:
-        selection = points_in_box(
-            layer._drag_box, layer._view_data, layer._view_size
-        )
-    else:
-        selection = _points_in_box_3d(
-            layer._drag_box,
-            layer._view_data,
-            layer._view_size,
-            layer._drag_normal,
-            layer._drag_up,
-        )
-
-    # If shift combine drag selection with existing selected ones
-    if modify_selection:
-        new_selected = layer._indices_view[selection]
-        target = set(layer.selected_data).symmetric_difference(
-            set(new_selected)
-        )
-        layer.selected_data = list(target)
-    else:
-        layer.selected_data = layer._indices_view[selection]
