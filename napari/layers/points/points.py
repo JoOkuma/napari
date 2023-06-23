@@ -21,9 +21,11 @@ from napari.layers.points._points_constants import Mode, Shading
 from napari.layers.points._points_mouse_bindings import add, highlight, select
 from napari.layers.points._points_utils import (
     _create_box_from_corners_3d,
+    _points_in_box_3d,
     coerce_symbols,
     create_box,
     fix_data_points,
+    points_in_box,
     points_to_squares,
 )
 from napari.layers.points._slice import _PointSliceRequest, _PointSliceResponse
@@ -1825,6 +1827,57 @@ class _BasePoints(Layer):
             and v[value] is not None
             and not (isinstance(v[value], float) and np.isnan(v[value]))
         ]
+
+    # FIXME: testing _get_value on graph layer
+    def _select_points_from_drag(
+        self, modify_selection: bool, n_display: int
+    ) -> Sequence[int]:
+        """Select points on a Points layer after a drag event.
+
+        Parameters
+        ----------
+        layer : napari.layers.Points
+            The points layer to select points on.
+        modify_selection : bool
+            Set to true if the selection should modify the current selected data
+            in layer.selected_data.
+        n_display : int
+            The number of dimensions current being displayed
+
+        Returns
+        -------
+        Sequence[int]
+            Selected points indices
+        """
+        if len(self._view_data) == 0:
+            # if no data in view, there isn't any data to select
+            self.selected_data = set()
+
+        # if there is data in view, find the points in the drag box
+        if n_display == 2:
+            selection = points_in_box(
+                self._drag_box, self._view_data, self._view_size
+            )
+        else:
+            selection = _points_in_box_3d(
+                self._drag_box,
+                self._view_data,
+                self._view_size,
+                self._drag_normal,
+                self._drag_up,
+            )
+
+        # If shift combine drag selection with existing selected ones
+        if modify_selection:
+            new_selected = self._indices_view[selection]
+            new_selected = set(self._selected_data).symmetric_difference(
+                set(new_selected)
+            )
+            new_selected = list(new_selected)
+        else:
+            new_selected = self._indices_view[selection]
+
+        return new_selected
 
 
 class Points(_BasePoints):

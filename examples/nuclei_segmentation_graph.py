@@ -9,6 +9,7 @@ Creates a delaunay graph from maxima of cell nuclei.
 from itertools import combinations
 
 import numpy as np
+import pandas as pd
 from napari_graph import UndirectedGraph
 from scipy.spatial import Delaunay
 from skimage import data, feature, filters
@@ -32,8 +33,14 @@ cells = data.cells3d()
 nuclei = cells[:, 1]
 smooth = filters.gaussian(nuclei, sigma=10)
 nodes_coords = feature.peak_local_max(smooth)
-edges = delaunay_edges(nodes_coords)
-graph = UndirectedGraph(edges, nodes_coords)
+
+nodes_df = pd.DataFrame(
+    nodes_coords,
+    index=np.arange(len(nodes_coords)) + 100,
+)  # using shifted indices as a showcase
+edges = nodes_df.index.to_numpy()[delaunay_edges(nodes_coords)]
+
+graph = UndirectedGraph(edges, nodes_df)
 viewer = napari.view_image(
     cells, channel_axis=1, name=['membranes', 'nuclei'], ndisplay=3
 )

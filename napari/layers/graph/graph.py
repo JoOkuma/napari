@@ -1,8 +1,10 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
+from psygnal.containers import Selection
 
+from napari.layers.base._base_constants import ActionType
 from napari.layers.graph._slice import _GraphSliceRequest, _GraphSliceResponse
 from napari.layers.points.points import _BasePoints
 from napari.layers.utils._slice_input import _SliceInput
@@ -411,28 +413,34 @@ class Graph(_BasePoints):
         self.data.add_nodes(indices=indices, coords=coords)
         self._data_changed(prev_size)
 
+    @property
+    def selected_data(self) -> Selection[int]:
+        buffer_indices = list(super().selected_data)
+        return set(self.data._buffer2world[buffer_indices])
+
+    @selected_data.setter
+    def selected_data(self, selected_data: Sequence[int]) -> None:
+        buffer_indices = self.data._map_world2buffer(
+            np.asarray(list(selected_data), dtype=int)
+        )
+        # only way to class parent's setter
+        super(self.__class__, self.__class__).selected_data.fset(
+            self, buffer_indices
+        )
+
     def remove_selected(self) -> None:
         """Removes selected points if any."""
         if len(self.selected_data):
-            self._remove_nodes(list(self.selected_data), is_buffer_domain=True)
+            self.remove(list(self.selected_data))
             self.selected_data = set()
 
     def remove(self, indices: ArrayLike) -> None:
-        """Remove nodes given indices."""
-        self._remove_nodes(indices, is_buffer_domain=False)
+        """Remove nodes given indices.
 
-    def _remove_nodes(
-        self,
-        indices: ArrayLike,
-        is_buffer_domain: bool,
-    ) -> None:
-        """
         Parameters
         ----------
         indices : ArrayLike
             List of node indices to remove.
-        is_buffer_domain : bool
-            Indicates if node indices are on world or buffer domain.
         """
         indices = np.atleast_1d(indices)
         if indices.ndim > 1:
@@ -447,7 +455,7 @@ class Graph(_BasePoints):
 
         # it got error missing __iter__ attribute, but we guarantee by np.atleast_1d call
         for idx in indices:  # type: ignore[union-attr]
-            self.data.remove_node(idx, is_buffer_domain)
+            self.data.remove_node(idx)
 
         self._data_changed(prev_size)
 
@@ -519,3 +527,77 @@ class Graph(_BasePoints):
         state.pop("properties", None)
         state.pop("property_choices", None)
         return state
+
+    # _set_value PR functions below
+
+    def _set_drag_start(
+        self,
+        selection_indices: Sequence[int],
+        position: Sequence[Union[int, float]],
+        center_by_data: bool = True,
+    ) -> None:
+        selection_indices = np.asarray(list(selection_indices), dtype=int)
+        super()._set_drag_start(
+            self.data._map_world2buffer(selection_indices),
+            position,
+            center_by_data,
+        )
+
+    def _move(
+        self,
+        selection_indices: Sequence[int],
+        position: Sequence[Union[int, float]],
+    ) -> None:
+        """Move points relative to drag start location.
+
+        Parameters
+        ----------
+        selection_indices : Sequence[int]
+            Integer indices of points to move in self.data
+        position : tuple
+            Position to move points to in data coordinates.
+        """
+        if len(selection_indices) > 0:
+            selection_indices = np.asarray(list(selection_indices), dtype=int)
+            self._set_drag_start(selection_indices, position)
+            buffer_indices = self.data._map_world2buffer(selection_indices)
+            disp = list(self._slice_input.displayed)
+            ixgrid = np.ix_(buffer_indices, disp)
+            center = self._points_data[ixgrid].mean(axis=0)
+            shift = np.array(position)[disp] - center - self._drag_start
+            self._move_points(ixgrid, shift)
+            self.refresh()
+        self.events.data(
+            value=self.data,
+            action=ActionType.CHANGE.value,
+            data_indices=tuple(selection_indices),
+            vertex_indices=((),),
+        )
+
+    def _get_value(self, position: Tuple[int]) -> Optional[int]:
+        """Returns the value of the node at the given position."""
+        buffer_indices = super()._get_value(position)
+        if buffer_indices is None:
+            return None
+        return self.data._buffer2world[buffer_indices]
+
+    def _get_value_3d(
+        self,
+        start_point: np.ndarray,
+        end_point: np.ndarray,
+        dims_displayed: List[int],
+    ) -> Optional[int]:
+        buffer_indices = super()._get_value_3d(
+            start_point, end_point, dims_displayed
+        )
+        if buffer_indices is None:
+            return None
+        return self.data._buffer2world[buffer_indices]
+
+    def _select_points_from_drag(
+        self, modify_selection: bool, n_display: int
+    ) -> Sequence[int]:
+        buffer_indices = super()._select_points_from_drag(
+            modify_selection, n_display
+        )
+        return self.data._buffer2world[list(buffer_indices)]

@@ -144,9 +144,9 @@ def test_add_nodes(graph_class: Type[BaseGraph]) -> None:
 @pytest.mark.parametrize("graph_class", [UndirectedGraph, DirectedGraph])
 def test_remove_selected_nodes(graph_class: Type[BaseGraph]) -> None:
     # it also tests if original graph object is changed inplace.
-    coords = np.asarray([[0, 0], [1, 1], [2, 2]])
+    coords = pd.DataFrame([[0, 0], [1, 1], [2, 2]], index=[1, 3, 5])
 
-    graph = graph_class(edges=[[0, 1], [1, 2]], coords=coords)
+    graph = graph_class(edges=[[1, 3], [3, 5]], coords=coords)
     layer = Graph(graph)
 
     # With nothing selected no points should be removed
@@ -155,7 +155,7 @@ def test_remove_selected_nodes(graph_class: Type[BaseGraph]) -> None:
     assert graph.n_nodes == coords.shape[0]
 
     # select nodes and remove then
-    layer.selected_data = {0, 2}
+    layer.selected_data = {1, 5}
     layer.remove_selected()
     assert len(layer.data) == coords.shape[0] - 2
     assert graph.n_nodes == coords.shape[0] - 2
@@ -164,7 +164,7 @@ def test_remove_selected_nodes(graph_class: Type[BaseGraph]) -> None:
     assert np.all(graph.get_coordinates() == 1)
 
     # remove last nodes, note that node id is not zero
-    layer.selected_data = {1}
+    layer.selected_data = {3}
     layer.remove_selected()
     assert len(layer.data) == 0
     assert graph.n_nodes == 0
@@ -246,3 +246,7 @@ def test_graph_from_data_tuple_non_empty(graph_class: Type[BaseGraph]) -> None:
     assert layer.name == new_layer.name
     assert len(layer.data) == len(new_layer.data)
     assert layer.ndim == new_layer.ndim
+
+
+# TODO
+# add test for non-sequential indexing of move, bounding-box, hover, other mouse interactions, ...
