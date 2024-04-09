@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple, Type
+from typing import Optional
 
 import numpy as np
 from vispy.scene.widgets.viewbox import ViewBox
@@ -23,6 +23,7 @@ from napari._vispy.overlays.interaction_box import (
 )
 from napari._vispy.overlays.labels_polygon import VispyLabelsPolygonOverlay
 from napari._vispy.overlays.scale_bar import VispyScaleBarOverlay
+from napari._vispy.overlays.slice_text import VispySliceTextOverlay
 from napari._vispy.overlays.text import VispyTextOverlay
 from napari.components.overlays import (
     AxesOverlay,
@@ -32,6 +33,7 @@ from napari.components.overlays import (
     Overlay,
     ScaleBarOverlay,
     SelectionBoxOverlay,
+    SliceTextOverlay,
     TextOverlay,
     TransformBoxOverlay,
 )
@@ -58,8 +60,9 @@ layer_to_visual = {
 }
 
 
-overlay_to_visual: Dict[Type[Overlay], Type[VispyBaseOverlay]] = {
+overlay_to_visual: dict[type[Overlay], type[VispyBaseOverlay]] = {
     ScaleBarOverlay: VispyScaleBarOverlay,
+    SliceTextOverlay: VispySliceTextOverlay,
     TextOverlay: VispyTextOverlay,
     AxesOverlay: VispyAxesOverlay,
     BoundingBoxOverlay: VispyBoundingBoxOverlay,
@@ -126,7 +129,7 @@ def create_vispy_overlay(overlay: Overlay, **kwargs) -> VispyBaseOverlay:
 def get_view_direction_in_scene_coordinates(
     view: ViewBox,
     ndim: int,
-    dims_displayed: Tuple[int],
+    dims_displayed: tuple[int],
 ) -> Optional[np.ndarray]:
     """Calculate the unit vector pointing in the direction of the view.
 

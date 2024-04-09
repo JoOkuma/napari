@@ -238,7 +238,7 @@ def test_roll_transpose_update(make_napari_viewer, layer_class, data, ndim):
     check_view_transform_consistency(layer, viewer, transf_dict)
 
     # Roll dims and check again:
-    viewer.dims._roll()
+    viewer.dims.roll()
     check_view_transform_consistency(layer, viewer, transf_dict)
 
     # Transpose and check again:
@@ -266,24 +266,27 @@ def test_toggling_axes(make_napari_viewer):
     assert not viewer.axes.visible
 
 
-def test_toggling_scale_bar(make_napari_viewer):
+@pytest.mark.parametrize('attribute', ['scale_bar', 'slice_text'])
+def test_toggling_aux_overlay(make_napari_viewer, attribute):
     """Test toggling scale bar."""
     viewer = make_napari_viewer()
 
+    aux_overlay = getattr(viewer, attribute)
+
     # Check scale bar is not visible
-    assert not viewer.scale_bar.visible
+    assert not aux_overlay.visible
 
     # Make scale bar visible
-    viewer.scale_bar.visible = True
-    assert viewer.scale_bar.visible
+    aux_overlay.visible = True
+    assert aux_overlay.visible
 
     # Enter 3D rendering and check scale bar is still visible
     viewer.dims.ndisplay = 3
-    assert viewer.scale_bar.visible
+    assert aux_overlay.visible
 
     # Make scale bar not visible
-    viewer.scale_bar.visible = False
-    assert not viewer.scale_bar.visible
+    aux_overlay.visible = False
+    assert not aux_overlay.visible
 
 
 def test_removing_points_data(make_napari_viewer):
