@@ -38,13 +38,6 @@ segmented = ndi.label(cleaned)[0]
 #     mask=cleaned,
 # )
 
-for l in viewer.layers:
-    l.visible = False
-
-import scipy.ndimage as ndi
-
-segmented = ndi.zoom(segmented, 2, order=0)
-
 labels_layer = viewer.add_labels(segmented)
 
 if __name__ == '__main__':

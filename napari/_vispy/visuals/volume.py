@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 from vispy.scene.visuals import Volume as BaseVolume
 
@@ -37,22 +39,18 @@ int detectAdjacentBackground(float val_neg, float val_pos)
 
 vec3 computeNormal(vec3 loc, vec3 step)
 {
-    float radius = 5.0f; // 2.5f;
-    float radius_step = 2.0f; // 1.0f;
-    float dif_length = 0.0f;
-    vec3 dif;
-    float val0 = colorToVal($get_data(loc));
-    float val1 = 0.0f;
+    float radius = 2.5f;
+    float radius_step = 1.0f;
+    float val0 = colorToVal($get_data(loc + step));
     vec3 N = vec3(0.0f);
-    // FIXME: step = vec3(0.0f);
 
     for (float z = -radius; z <= radius; z += radius_step) {
         for (float y = -radius; y <= radius; y += radius_step) {
             for (float x = -radius; x <= radius; x += radius_step)
             {
-                dif = step * vec3(z, y, x);
-                val1 = colorToVal($get_data(loc + dif));
-                dif_length = length(dif);  // Could be optimized
+                vec3 dif = step * vec3(z, y, x);
+                float val1 = colorToVal($get_data(loc + dif));
+                float dif_length = length(dif);  // Could be optimized
                 N = N + dif * (val0 - val1) / dif_length;
             }
         }
@@ -74,12 +72,13 @@ vec4 calculateShadedCategoricalColor(vec4 betterColor, vec3 loc, vec3 step)
     // FIXME: testing lighting
     vec4 m_ambient = vec4(1.0, 0.0, 0.0, 1.0);
     vec4 m_diffuse = vec4(0.0, 1.0, 0.0, 1.0);
-    vec4 m_specular = vec4(0.0, 0.0, 1.0, 1.0);
+    vec4 m_specular = vec4(1.0, 1.0, 1.0, 1.0);
     vec4 final_color;
 
-    float ka = 0.8;
-    float kd = 0.4;
-    float ks = 0.4;
+    float ka = 0.8f;
+    float kd = 0.4f;
+    float ks = 0.2f;
+    float ns = 5.0f;
 
     // todo: allow multiple light, define lights on viewvox or subscene
     int nlights = 1;
@@ -96,20 +95,21 @@ vec4 calculateShadedCategoricalColor(vec4 betterColor, vec3 loc, vec3 step)
         // cos(2x) = 2 cos^2(x) - 1
         // https://en.wikipedia.org/wiki/List_of_trigonometric_identities
         float cos20 = 2 * lambertTerm * lambertTerm - 1;
-        float specularTerm = pow(cos20, 5.0);
+        float specularTerm = pow(cos20, ns);
 
         // Calculate mask
         float mask1 = lightEnabled;
 
         // Calculate colors
         ambient_color +=  mask1 * ka * m_ambient;  // * gl_LightSource[i].ambient;
-        diffuse_color +=  mask1 * kd * lambertTerm * m_diffuse; 
+        diffuse_color +=  mask1 * kd * lambertTerm * m_diffuse;
         specular_color += mask1 * ks * specularTerm, 5.0 * m_specular;  // * gl_LightSource[i].specular;
     }
 
     // Calculate final color by componing different components
     final_color = betterColor * ( ambient_color + diffuse_color + specular_color);
     final_color.a = betterColor.a;
+    final_color = clamp(final_color, 0.0, 1.0);
 
     // Done
     return final_color;
@@ -123,17 +123,21 @@ ISO_CATEGORICAL_SNIPPETS = {
         gl_FragColor = vec4(0.0);
         bool discard_fragment = true;
         vec4 label_id = vec4(0.0);
+        float threshold = 0.01f;
+        float small_step_threshold = 0.005f;
         """,
     'in_loop': """
         // check if value is different from the background value
-        // if ( floatNotEqual(val, categorical_bg_value) ) {
-        if ( floatEqual(val, 1.0f) ) {
+        // almost the same as 1.0 (internal boundary) but not exactly
+        if ( abs(val - 1.0f) < threshold ) {
             // Take the last interval in smaller steps
             vec3 iloc = loc - step;
             for (int i=0; i<10; i++) {
                 label_id = $get_data(iloc);
                 color = sample_label_color(label_id.r);
-                if (floatNotEqual(color.a, 0) ) {
+                float ival = colorToVal(label_id);
+                // if (floatNotEqual(color.a, 0) ) {
+                if (floatNotEqual(color.a, 0) && abs(ival - 1.0) < small_step_threshold) {
                     // fully transparent color is considered as background, see napari/napari#5227
                     // when the value mapped to non-transparent color is reached
                     // calculate the shaded color (apply lighting effects)
@@ -219,9 +223,10 @@ class SDFVolume(Volume):
     ) -> None:
         try:
             from edt import sdf
-        except ImportError:
-            raise ImportError('The "edt" package is required to use SDFVolume')
-        print('SDF volume called.')
-        self._sdf = sdf(vol)
-        vol = self._sdf.astype(vol.dtype)  # FIXME
-        super().set_data(vol, clim, copy)
+        except ImportError as e:
+            raise ImportError(
+                'The "edt" package is required to use SDFVolume'
+            ) from e
+        vol_sdf = sdf(vol).astype(vol.dtype)  # FIXME: should be float
+        self.interpolation = 'linear'
+        super().set_data(vol_sdf, clim, copy)
