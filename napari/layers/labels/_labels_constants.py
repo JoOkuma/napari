@@ -82,7 +82,10 @@ class LabelsRendering(StringEnum):
           Cast a ray until a non-background value is encountered. At that
           location, lighning calculations are performed to give the visual
           appearance of a surface.
+        * signed_distance: smooth normals and shading using signed distance
+          transform.
     """
 
     TRANSLUCENT = auto()
     ISO_CATEGORICAL = auto()
+    SIGNED_DIST = auto()

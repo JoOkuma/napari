@@ -1,3 +1,4 @@
+import numpy as np
 from vispy.scene.visuals import Volume as BaseVolume
 
 from napari._vispy.visuals.util import TextureMixin
@@ -34,80 +35,80 @@ int detectAdjacentBackground(float val_neg, float val_pos)
     return adjacent_bg;
 }
 
+vec3 computeNormal(vec3 loc, vec3 step)
+{
+    float radius = 5.0f; // 2.5f;
+    float radius_step = 2.0f; // 1.0f;
+    float dif_length = 0.0f;
+    vec3 dif;
+    float val0 = colorToVal($get_data(loc));
+    float val1 = 0.0f;
+    vec3 N = vec3(0.0f);
+    // FIXME: step = vec3(0.0f);
+
+    for (float z = -radius; z <= radius; z += radius_step) {
+        for (float y = -radius; y <= radius; y += radius_step) {
+            for (float x = -radius; x <= radius; x += radius_step)
+            {
+                dif = step * vec3(z, y, x);
+                val1 = colorToVal($get_data(loc + dif));
+                dif_length = length(dif);  // Could be optimized
+                N = N + dif * (val0 - val1) / dif_length;
+            }
+        }
+    }
+    return normalize(N);
+}
+
 vec4 calculateShadedCategoricalColor(vec4 betterColor, vec3 loc, vec3 step)
 {
-    // Calculate color by incorporating ambient and diffuse lighting
-    vec4 color0 = $get_data(loc);
-    vec4 color1;
-    vec4 color2;
-    float val0 = colorToVal(color0);
-    float val1 = 0;
-    float val2 = 0;
-    int n_bg_borders = 0;
-
     // View direction
     vec3 V = normalize(view_ray);
-
-    // calculate normal vector from gradient
-    vec3 N; // normal
-    color1 = $get_data(loc+vec3(-step[0],0.0,0.0));
-    color2 = $get_data(loc+vec3(step[0],0.0,0.0));
-    val1 = colorToVal(color1);
-    val2 = colorToVal(color2);
-    N[0] = val1 - val2;
-    n_bg_borders += detectAdjacentBackground(val1, val2);
-
-    color1 = $get_data(loc+vec3(0.0,-step[1],0.0));
-    color2 = $get_data(loc+vec3(0.0,step[1],0.0));
-    val1 = colorToVal(color1);
-    val2 = colorToVal(color2);
-    N[1] = val1 - val2;
-    n_bg_borders += detectAdjacentBackground(val1, val2);
-
-    color1 = $get_data(loc+vec3(0.0,0.0,-step[2]));
-    color2 = $get_data(loc+vec3(0.0,0.0,step[2]));
-    val1 = colorToVal(color1);
-    val2 = colorToVal(color2);
-    N[2] = val1 - val2;
-    n_bg_borders += detectAdjacentBackground(val1, val2);
-
-    // Normalize and flip normal so it points towards viewer
-    N = normalize(N);
-    float Nselect = float(dot(N,V) > 0.0);
-    N = (2.0*Nselect - 1.0) * N;  // ==  Nselect * N - (1.0-Nselect)*N;
+    vec3 N = computeNormal(loc, step);
 
     // Init colors
-    vec4 ambient_color = vec4(0.0, 0.0, 0.0, 0.0);
-    vec4 diffuse_color = vec4(0.0, 0.0, 0.0, 0.0);
+    vec4 ambient_color = vec4(0.0);
+    vec4 diffuse_color = vec4(0.0);
+    vec4 specular_color = vec4(0.0);
+
+    // FIXME: testing lighting
+    vec4 m_ambient = vec4(1.0, 0.0, 0.0, 1.0);
+    vec4 m_diffuse = vec4(0.0, 1.0, 0.0, 1.0);
+    vec4 m_specular = vec4(0.0, 0.0, 1.0, 1.0);
     vec4 final_color;
+
+    float ka = 0.8;
+    float kd = 0.4;
+    float ks = 0.4;
 
     // todo: allow multiple light, define lights on viewvox or subscene
     int nlights = 1;
     for (int i=0; i<nlights; i++)
     {
-        // Get light direction (make sure to prevent zero devision)
+        // Get light direction (make sure to prevent zero division)
         vec3 L = normalize(view_ray);  //lightDirs[i];
         float lightEnabled = float( length(L) > 0.0 );
         L = normalize(L+(1.0-lightEnabled));
 
         // Calculate lighting properties
-        float lambertTerm = clamp( dot(N,L), 0.0, 1.0 );
-        if (n_bg_borders > 0) {
-            // to fix dim pixels due to poor normal estimation,
-            // we give a default lambda to pixels surrounded by background
-            lambertTerm = 0.5;
-        }
+        float lambertTerm = clamp(dot(N,L), 0.0, 1.0 );
+
+        // cos(2x) = 2 cos^2(x) - 1
+        // https://en.wikipedia.org/wiki/List_of_trigonometric_identities
+        float cos20 = 2 * lambertTerm * lambertTerm - 1;
+        float specularTerm = pow(cos20, 5.0);
 
         // Calculate mask
         float mask1 = lightEnabled;
 
         // Calculate colors
-        ambient_color +=  mask1 * u_ambient;  // * gl_LightSource[i].ambient;
-        diffuse_color +=  mask1 * lambertTerm;
+        ambient_color +=  mask1 * ka * m_ambient;  // * gl_LightSource[i].ambient;
+        diffuse_color +=  mask1 * kd * lambertTerm * m_diffuse; 
+        specular_color += mask1 * ks * specularTerm, 5.0 * m_specular;  // * gl_LightSource[i].specular;
     }
 
     // Calculate final color by componing different components
-    final_color = betterColor * ( ambient_color + diffuse_color);
+    final_color = betterColor * ( ambient_color + diffuse_color + specular_color);
     final_color.a = betterColor.a;
 
     // Done
@@ -125,7 +126,8 @@ ISO_CATEGORICAL_SNIPPETS = {
         """,
     'in_loop': """
         // check if value is different from the background value
-        if ( floatNotEqual(val, categorical_bg_value) ) {
+        // if ( floatNotEqual(val, categorical_bg_value) ) {
+        if ( floatEqual(val, 1.0f) ) {
             // Take the last interval in smaller steps
             vec3 iloc = loc - step;
             for (int i=0; i<10; i++) {
@@ -206,3 +208,20 @@ class Volume(TextureMixin, BaseVolume):
     # add the new rendering method to the snippets dict
     _shaders = shaders
     _rendering_methods = rendering_methods
+
+
+class SDFVolume(Volume):
+    def set_data(
+        self,
+        vol: np.ndarray,
+        clim: tuple | None = None,
+        copy: bool = True,
+    ) -> None:
+        try:
+            from edt import sdf
+        except ImportError:
+            raise ImportError('The "edt" package is required to use SDFVolume')
+        print('SDF volume called.')
+        self._sdf = sdf(vol)
+        vol = self._sdf.astype(vol.dtype)  # FIXME
+        super().set_data(vol, clim, copy)
