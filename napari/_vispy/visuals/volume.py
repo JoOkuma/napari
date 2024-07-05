@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import scipy.ndimage as ndi
 from vispy.scene.visuals import Volume as BaseVolume
 
 from napari._vispy.visuals.util import TextureMixin
@@ -214,6 +215,29 @@ class Volume(TextureMixin, BaseVolume):
     _rendering_methods = rendering_methods
 
 
+def _sdf(labels: np.ndarray) -> np.ndarray:
+    """
+    Compute the signed distance transform
+
+    NOTE: the distance transform considers foreground vs background
+          not taking into consideration normals between different labels
+
+    Parameters
+    ----------
+    labels : np.ndarray
+        The binary label image
+
+    Returns
+    -------
+    np.ndarray
+        The signed distance transform
+    """
+    labels = (labels > 0).astype(labels.dtype)
+    inside_distance = ndi.distance_transform_cdt(1 - labels)
+    outside_distance = ndi.distance_transform_cdt(labels)
+    return (outside_distance - inside_distance).astype(labels.dtype)
+
+
 class SDFVolume(Volume):
     def set_data(
         self,
@@ -221,12 +245,6 @@ class SDFVolume(Volume):
         clim: tuple | None = None,
         copy: bool = True,
     ) -> None:
-        try:
-            from edt import sdf
-        except ImportError as e:
-            raise ImportError(
-                'The "edt" package is required to use SDFVolume'
-            ) from e
-        vol_sdf = sdf(vol).astype(vol.dtype)  # FIXME: should be float
+        vol_sdf = _sdf(vol)
         self.interpolation = 'linear'
         super().set_data(vol_sdf, clim, copy)
